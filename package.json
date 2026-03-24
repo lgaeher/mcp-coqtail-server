@@ -1,10 +1,10 @@
 {
-  "name": "mcp-neovim-server",
-  "version": "0.5.5",
-  "description": "An MCP server for neovim",
+  "name": "mcp-coqtail-server",
+  "version": "0.1.0",
+  "description": "An MCP server for Coqtail",
   "type": "module",
   "bin": {
-    "mcp-neovim-server": "build/index.js"
+    "mcp-coqtail-server": "build/index.js"
   },
   "files": [
     "build"
@@ -17,14 +17,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bigcodegen/mcp-neovim-server.git"
+    "url": "git+https://github.com/lgaeher/mcp-coqtail-server.git"
   },
-  "author": "bigcodegen",
+  "author": "lgaeher",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/bigcodegen/mcp-neovim-server/issues"
+    "url": "https://github.com/lgaeher/mcp-coqtail-server/issues"
   },
-  "homepage": "https://github.com/bigcodegen/mcp-neovim-server#readme",
+  "homepage": "https://github.com/lgaeher/mcp-coqtail-server#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.4",
     "neovim": "^5.3.0",
@@ -32,7 +32,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0",
+    "@types/node": "^24.12.0",
     "typescript": "^5.9.2"
   }
 }

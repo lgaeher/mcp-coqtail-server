@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
 /**
- * This is an MCP server that connects to neovim.
+ * This is an MCP server that connects to Coqtail in neovim.
  */
 
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { NeovimManager, NeovimConnectionError, NeovimCommandError, NeovimValidationError } from "./neovim.js";
+import { NeovimManager } from "./neovim.js";
 import { z } from "zod";
 
 const server = new McpServer(
   {
-    name: "mcp-neovim-server",
-    version: "0.5.5"
+    name: "mcp-coqtail-server",
+    version: "0.1.0"
   }
 );
 
@@ -21,7 +21,7 @@ const neovimManager = NeovimManager.getInstance();
 // Register resources
 server.resource(
   "session",
-  new ResourceTemplate("nvim://session", { 
+  new ResourceTemplate("nvim://session", {
     list: () => ({
       resources: [{
         uri: "nvim://session",
@@ -47,7 +47,7 @@ server.resource(
 
 server.resource(
   "buffers",
-  new ResourceTemplate("nvim://buffers", { 
+  new ResourceTemplate("nvim://buffers", {
     list: () => ({
       resources: [{
         uri: "nvim://buffers",
@@ -97,39 +97,171 @@ server.tool(
 );
 
 server.tool(
-  "vim_command",
-  "Execute Vim commands with optional shell command support",
-  { command: z.string().describe("Vim command to execute (use ! prefix for shell commands if enabled)") },
-  async ({ command }) => {
-    try {
-      // Check if this is a shell command
-      if (command.startsWith('!')) {
-        const allowShellCommands = process.env.ALLOW_SHELL_COMMANDS === 'true';
-        if (!allowShellCommands) {
-          return {
-            content: [{
-              type: "text",
-              text: "Shell command execution is disabled. Set ALLOW_SHELL_COMMANDS=true environment variable to enable shell commands."
-            }]
-          };
-        }
-      }
+  "coq_goal",
+  "Get the current Coq goal",
+  {  },
+  async ({ }) => {
+      const bufferContents = await neovimManager.getGoalBuffer();
+      return {
+        content: [{
+          type: "text",
+          text: bufferContents
+        }]
+      };
+  }
+);
 
-      const result = await neovimManager.sendCommand(command);
+server.tool(
+  "coq_to_cursor",
+  "Move Coq scripting to the current cursor position",
+  { },
+  async ({ }) => {
+      const result = await neovimManager.sendCoqToCursor();
       return {
         content: [{
           type: "text",
           text: result
         }]
       };
-    } catch (error) {
+  }
+);
+
+server.tool(
+  "coq_next",
+  "Advance Coq scripting by a number of steps",
+  { num: z.number().describe("The number of steps to advance") },
+  async ({ num }) => {
+      const result = await neovimManager.sendCoqNext(num);
       return {
         content: [{
           type: "text",
-          text: error instanceof Error ? error.message : 'Error executing command'
+          text: result
         }]
       };
-    }
+  }
+);
+
+server.tool(
+  "coq_revert",
+  "Revert Coq scripting by a number of steps",
+  { num: z.number().describe("The number of steps to revert") },
+  async ({ num }) => {
+    const result = await neovimManager.sendCoqRevert(num);
+    return {
+      content: [{
+        type: "text",
+        text: result
+      }]
+    };
+  }
+);
+
+server.tool(
+  "coq_check",
+  "Check the type of a Coq term using Coq's Check command.",
+  { term: z.string().describe("The term to type-check") },
+  async ({ term }) => {
+      const result = await neovimManager.sendCoqCheck(term);
+      return {
+        content: [{
+          type: "text",
+          text: result
+        }]
+      };
+  }
+);
+
+server.tool(
+  "coq_print",
+  "Print the definition of a Coq term using Coq's Print command.",
+  { term: z.string().describe("The term lookup") },
+  async ({ term }) => {
+      const result = await neovimManager.sendCoqPrint(term);
+      return {
+        content: [{
+          type: "text",
+          text: result
+        }]
+      };
+  }
+);
+
+server.tool(
+  "coq_search",
+  "Search for definitions related to the given terms using Coq's Search command.",
+  { term: z.string().describe("A list of terms to search for (separated by space)") },
+  async ({ term }) => {
+      const result = await neovimManager.sendCoqSearch(term);
+      return {
+        content: [{
+          type: "text",
+          text: result
+        }]
+      };
+  }
+);
+
+server.tool(
+  "coq_locate_notation",
+  "Locate notations using Coq's Locate command.",
+  { term: z.string().describe("A fragment of the notation to locate") },
+  async ({ term }) => {
+      const result = await neovimManager.sendCoqLocate(term);
+      return {
+        content: [{
+          type: "text",
+          text: result
+        }]
+      };
+  }
+);
+
+server.tool(
+  "get_contents",
+  "Get the text in the current buffer at the given position with line numbers.",
+  { start: z.number().optional().describe("Line number to start from (current cursor if empty)"), length: z.number().describe("Number of lines to get") },
+  async ({ start, length }) => {
+      const result = await neovimManager.getContext(length, start);
+      return {
+        content: [{
+          type: "text",
+          text: Array.from(result.entries())
+            .map(([lineNum, lineText]) => `${lineNum}: ${lineText}`)
+            .join('\n')
+        }]
+      };
+  }
+);
+
+server.tool(
+  "get_cursor_position",
+  "Get the current cursor position.",
+  { },
+  async ({ }) => {
+      const result = await neovimManager.getCursorPosition();
+      let res = `${result}`;
+      return {
+        content: [{
+          type: "text",
+          text: res
+        }]
+      };
+  }
+);
+
+server.tool(
+  "coq_get_position",
+  "Get the position up to which Coq has checked the proof.",
+  { },
+  async ({ }) => {
+      const result = await neovimManager.getCoqPosition();
+      let res = `${result}`;
+      return {
+        content: [{
+          type: "text",
+          text: res
+        }]
+      };
   }
 );
 
@@ -138,7 +270,6 @@ server.tool(
   "Get comprehensive Neovim status including cursor position, mode, marks, and registers",
   {},
   async () => {
-    try {
       const status = await neovimManager.getNeovimStatus();
       return {
         content: [{
@@ -146,124 +277,42 @@ server.tool(
           text: JSON.stringify(status, null, 2)
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error getting Neovim status'
-        }]
-      };
-    }
   }
 );
 
 server.tool(
-  "vim_edit",
-  "Edit buffer content using insert, replace, or replaceAll modes",
-  { 
+  "vim_insert",
+  "Insert the given text as new lines starting at the given line number.",
+  {
     startLine: z.number().describe("The line number where editing should begin (1-indexed)"),
-    mode: z.enum(["insert", "replace", "replaceAll"]).describe("Whether to insert new content, replace existing content, or replace entire buffer"),
-    lines: z.string().describe("The text content to insert or use as replacement")
+    lines: z.string().describe("The text content to insert as new lines (don't terminate with newline)")
   },
-  async ({ startLine, mode, lines }) => {
-    try {
-      const result = await neovimManager.editLines(startLine, mode, lines);
+  async ({ startLine, lines }) => {
+      const result = await neovimManager.editLines(startLine, 'insert', lines);
       return {
         content: [{
           type: "text",
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error editing buffer'
-        }]
-      };
-    }
   }
 );
 
 server.tool(
-  "vim_window",
-  "Manage Neovim windows: split, close, and navigate between windows",
-  { 
-    command: z.enum(["split", "vsplit", "only", "close", "wincmd h", "wincmd j", "wincmd k", "wincmd l"])
-      .describe("Window manipulation command: split or vsplit to create new window, only to keep just current window, close to close current window, or wincmd with h/j/k/l to navigate between windows")
-  },
-  async ({ command }) => {
-    try {
-      const result = await neovimManager.manipulateWindow(command);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error manipulating window'
-        }]
-      };
-    }
-  }
-);
-
-server.tool(
-  "vim_mark",
-  "Set named marks at specific positions in the buffer",
+  "vim_delete",
+  "Delete n lines starting at the given line number.",
   {
-    mark: z.string().regex(/^[a-z]$/).describe("Single lowercase letter [a-z] to use as the mark name"),
-    line: z.number().describe("The line number where the mark should be placed (1-indexed)"),
-    column: z.number().describe("The column number where the mark should be placed (0-indexed)")
+    startLine: z.number().describe("The line number where editing should begin (1-indexed)"),
+    num: z.number().describe("The number of lines to delete")
   },
-  async ({ mark, line, column }) => {
-    try {
-      const result = await neovimManager.setMark(mark, line, column);
+  async ({ startLine, num }) => {
+      const result = await neovimManager.removeLines(startLine, num);
       return {
         content: [{
           type: "text",
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error setting mark'
-        }]
-      };
-    }
-  }
-);
-
-server.tool(
-  "vim_register",
-  "Manage Neovim register contents",
-  {
-    register: z.string().regex(/^[a-z"]$/).describe("Register name - a lowercase letter [a-z] or double-quote [\"] for the unnamed register"),
-    content: z.string().describe("The text content to store in the specified register")
-  },
-  async ({ register, content }) => {
-    try {
-      const result = await neovimManager.setRegister(register, content);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error setting register'
-        }]
-      };
-    }
   }
 );
 
@@ -277,7 +326,6 @@ server.tool(
     endColumn: z.number().describe("The ending column number for visual selection (0-indexed)")
   },
   async ({ startLine, startColumn, endLine, endColumn }) => {
-    try {
       const result = await neovimManager.visualSelect(startLine, startColumn, endLine, endColumn);
       return {
         content: [{
@@ -285,18 +333,11 @@ server.tool(
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error creating visual selection'
-        }]
-      };
-    }
   }
 );
 
 // New enhanced buffer management tools
+/*
 server.tool(
   "vim_buffer_switch",
   "Switch between buffers by name or number",
@@ -322,7 +363,9 @@ server.tool(
     }
   }
 );
+*/
 
+/*
 server.tool(
   "vim_buffer_save",
   "Save current buffer or save to specific filename",
@@ -348,7 +391,9 @@ server.tool(
     }
   }
 );
+*/
 
+/*
 server.tool(
   "vim_file_open",
   "Open files into new buffers",
@@ -374,6 +419,7 @@ server.tool(
     }
   }
 );
+*/
 
 // New search and replace tools
 server.tool(
@@ -385,7 +431,6 @@ server.tool(
     wholeWord: z.boolean().optional().describe("Whether to match whole words only (default: false)")
   },
   async ({ pattern, ignoreCase = false, wholeWord = false }) => {
-    try {
       const result = await neovimManager.searchInBuffer(pattern, { ignoreCase, wholeWord });
       return {
         content: [{
@@ -393,14 +438,6 @@ server.tool(
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error searching in buffer'
-        }]
-      };
-    }
   }
 );
 
@@ -415,7 +452,6 @@ server.tool(
     confirm: z.boolean().optional().describe("Whether to confirm each replacement (default: false)")
   },
   async ({ pattern, replacement, global = false, ignoreCase = false, confirm = false }) => {
-    try {
       const result = await neovimManager.searchAndReplace(pattern, replacement, { global, ignoreCase, confirm });
       return {
         content: [{
@@ -423,43 +459,35 @@ server.tool(
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error in search and replace'
-        }]
-      };
-    }
   }
 );
 
-server.tool(
-  "vim_grep",
-  "Project-wide search using vimgrep with quickfix list",
-  {
-    pattern: z.string().describe("Search pattern to grep for"),
-    filePattern: z.string().optional().describe("File pattern to search in (default: **/* for all files)")
-  },
-  async ({ pattern, filePattern = "**/*" }) => {
-    try {
-      const result = await neovimManager.grepInProject(pattern, filePattern);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error in grep search'
-        }]
-      };
-    }
-  }
-);
+//server.tool(
+  //"vim_grep",
+  //"Project-wide search using vimgrep with quickfix list",
+  //{
+    //pattern: z.string().describe("Search pattern to grep for"),
+    //filePattern: z.string().optional().describe("File pattern to search in (default: **/* for all files)")
+  //},
+  //async ({ pattern, filePattern = "**/*" }) => {
+    //try {
+      //const result = await neovimManager.grepInProject(pattern, filePattern);
+      //return {
+        //content: [{
+          //type: "text",
+          //text: result
+        //}]
+      //};
+    //} catch (error) {
+      //return {
+        //content: [{
+          //type: "text",
+          //text: error instanceof Error ? error.message : 'Error in grep search'
+        //}]
+      //};
+    //}
+  //}
+//);
 
 // Health check tool
 server.tool(
@@ -477,134 +505,17 @@ server.tool(
   }
 );
 
-// Macro management tool
-server.tool(
-  "vim_macro",
-  "Record, stop, and play Neovim macros",
-  {
-    action: z.enum(["record", "stop", "play"]).describe("Action to perform with macros"),
-    register: z.string().optional().describe("Register to record/play macro (a-z, required for record/play)"),
-    count: z.number().optional().describe("Number of times to play macro (default: 1)")
-  },
-  async ({ action, register, count = 1 }) => {
-    try {
-      const result = await neovimManager.manageMacro(action, register, count);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error managing macro'
-        }]
-      };
-    }
-  }
-);
-
-// Tab management tool
-server.tool(
-  "vim_tab",
-  "Manage Neovim tabs: create, close, and navigate between tabs",
-  {
-    action: z.enum(["new", "close", "next", "prev", "first", "last", "list"]).describe("Tab action to perform"),
-    filename: z.string().optional().describe("Filename for new tab (optional)")
-  },
-  async ({ action, filename }) => {
-    try {
-      const result = await neovimManager.manageTab(action, filename);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error managing tab'
-        }]
-      };
-    }
-  }
-);
-
-// Code folding tool
-server.tool(
-  "vim_fold",
-  "Manage code folding: create, open, close, and toggle folds",
-  {
-    action: z.enum(["create", "open", "close", "toggle", "openall", "closeall", "delete"]).describe("Folding action to perform"),
-    startLine: z.number().optional().describe("Start line for creating fold (required for create)"),
-    endLine: z.number().optional().describe("End line for creating fold (required for create)")
-  },
-  async ({ action, startLine, endLine }) => {
-    try {
-      const result = await neovimManager.manageFold(action, startLine, endLine);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error managing fold'
-        }]
-      };
-    }
-  }
-);
-
-// Jump list navigation tool
-server.tool(
-  "vim_jump",
-  "Navigate Neovim jump list: go back, forward, or list jumps",
-  {
-    direction: z.enum(["back", "forward", "list"]).describe("Jump direction or list jumps")
-  },
-  async ({ direction }) => {
-    try {
-      const result = await neovimManager.navigateJumpList(direction);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error navigating jump list'
-        }]
-      };
-    }
-  }
-);
-
-// Register a sample prompt for Neovim workflow assistance
+// Register a sample prompt for Coqtail assistance
 server.prompt(
-  "neovim_workflow", 
-  "Get help with common Neovim workflows and editing tasks",
+  "coqtail_workflow",
+  "Get help with planning and proving proofs",
   {
-    task: z.enum(["editing", "navigation", "search", "buffers", "windows", "macros"]).describe("Type of Neovim task you need help with")
+    task: z.enum(["planning", "proving"]).describe("Type of Coqtail task you need help with")
   },
   async ({ task }) => {
     const workflows = {
-      editing: "Here are common editing workflows:\n1. Use vim_edit with 'insert' mode to add new content\n2. Use vim_edit with 'replace' mode to modify existing lines\n3. Use vim_search_replace for find and replace operations\n4. Use vim_visual to select text ranges before operations",
-      navigation: "Navigation workflows:\n1. Use vim_mark to set bookmarks in your code\n2. Use vim_jump to navigate through your jump history\n3. Use vim_command with 'gg' or 'G' to go to start/end of file\n4. Use vim_command with line numbers like ':42' to jump to specific lines",
-      search: "Search workflows:\n1. Use vim_search to find patterns in current buffer\n2. Use vim_grep for project-wide searches\n3. Use vim_search_replace for complex find/replace operations\n4. Use regex patterns for advanced matching",
-      buffers: "Buffer management:\n1. Use vim_buffer to view buffer contents\n2. Use vim_buffer_switch to change between buffers\n3. Use vim_file_open to open new files\n4. Use vim_buffer_save to save your work",
-      windows: "Window management:\n1. Use vim_window with 'split'/'vsplit' to create new windows\n2. Use vim_window with 'wincmd h/j/k/l' to navigate between windows\n3. Use vim_window with 'close' to close current window\n4. Use vim_window with 'only' to keep only current window",
-      macros: "Macro workflows:\n1. Use vim_macro with 'record' and a register to start recording\n2. Perform your actions in Neovim\n3. Use vim_macro with 'stop' to end recording\n4. Use vim_macro with 'play' to execute recorded actions"
+      planning: "You are looking at Coq proofs. Coq only checks the current file as far as you tell it to.\nYou can check how far Coq has checked the file with `coq_get_position`.\nALWAYS use `vim_buffer` and `get_contents` to read from the current file.\n`vim_buffer` gives you the whole buffer with line numbers. You may use it once if necessary, but not more than that.\nUse `get_contents` instead, which you can use to read part of a file.\nWhen planning proofs, these tools are helpful:\n - `coq_goal`to check the current goal, if inside a `Proof.`.\n- `coq_check` to check the type a term if unsure.\n- `coq_search` to find relevant lemmas if you can't make progress with simpler tactics.\n- `coq_locate_notation` to find out what a Coq notation resolves to.\n- `coq_print` to get the definition of a symbol.",
+      proving: "You are looking at Coq proofs. Coq only checks the current file as far as you tell it to.\nYou can check how far Coq has checked the file with `coq_get_position`.\nALWAYS use `vim_buffer` and `get_contents` to read from the current file.\n`vim_buffer` gives you the whole buffer with line numbers. You may use it once if necessary, but not more than that.\nUse `get_contents` instead, which you can use to read part of a file.\nPrefer to edit lines with the `vim_insert`/`vim_delete` tools.\nDo not use find-and-replace to edit single lines. If you are writing proofs, write only one sentence (ending with a dot) per line.",
     };
 
     return {
@@ -613,7 +524,7 @@ server.prompt(
           role: "assistant",
           content: {
             type: "text",
-            text: workflows[task] || "Unknown task type. Available tasks: editing, navigation, search, buffers, windows, macros"
+            text: workflows[task] || "Unknown task type. Available tasks: planning, proving"
           }
         }
       ]

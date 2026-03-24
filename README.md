@@ -1,20 +1,17 @@
-# Neovim MCP Server
+# Coqtail MCP Server
 
-Connect Claude Desktop (or any Model Context Protocol client) to Neovim using MCP and the official neovim/node-client JavaScript library. This server leverages Vim's native text editing commands and workflows, which Claude already understands, to create a lightweight code or general purpose AI text assistance layer.
+Connect Claude Desktop (or any Model Context Protocol client) to Neovim with [Coqtail](https://github.com/whonore/coqtail) using MCP and the official neovim/node-client JavaScript library.
+This server leverages Vim's native text editing commands as well as Coqtail's abilities to check and understand Rocq proofs.
 
-<a href="https://glama.ai/mcp/servers/s0fywdwp87"><img width="380" height="200" src="https://glama.ai/mcp/servers/s0fywdwp87/badge" alt="mcp-neovim-server MCP server" /></a>
+This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mcp-neovim-server).
 
 ## Features
 
-- Connects to your nvim instance if you expose a socket file, for example `--listen /tmp/nvim`, when starting nvim
-- Views your current buffers and manages buffer switching
-- Gets cursor location, mode, file name, marks, registers, and visual selections
-- Runs vim commands and optionally shell commands through vim
-- Can make edits using insert, replace, or replaceAll modes
-- Search and replace functionality with regex support
-- Project-wide grep search with quickfix integration
-- Comprehensive window management
-- Health monitoring and connection diagnostics
+- Connects to your nvim instance if you expose a socket file, for example `--listen /tmp/nvim.sock`, when starting nvim
+- Views your current buffer and proof state
+- Allows to `Search`/`Check`/`Print`/`Locate` to plan proofs.
+- Allows to delete/insert into your file to realize proofs
+- Allows to step Rocq's proof state and get feedback on errors.
 
 ## API
 
@@ -25,134 +22,141 @@ Connect Claude Desktop (or any Model Context Protocol client) to Neovim using MC
 
 ### Tools
 
-#### Core Tools
+#### Rocq Proof Management
+
+- **coq_next**
+  - Advance Rocq by n steps
+  - Input: `num` (number) — number of steps to advance
+  - Returns: success/error message
+
+- **coq_revert**
+  - Undo the last n Rocq steps
+  - Input: `num` (number) — number of steps to revert
+  - Returns: success/error message
+
+- **coq_to_cursor**
+  - Run Rocq up to the cursor position
+  - Input: none
+  - Returns: success/error message
+
+- **coq_get_position**
+  - Get the line Rocq has checked up to
+  - Input: none
+  - Returns: line number
+
+#### Rocq Introspection
+
+- **coq_goal**
+  - Get the current proof goal
+  - Input: none
+  - Returns: goal buffer contents
+
+- **coq_check**
+  - Check a term's type
+  - Input: `term` (string) — the term to type-check
+  - Returns: type information
+
+- **coq_print**
+  - Print a term's definition
+  - Input: `term` (string) — the term to look up
+  - Returns: definition
+
+- **coq_search**
+  - Search for lemmas/definitions by keyword
+  - Input: `term` (string) — keywords to search for (space-separated)
+  - Returns: matching definitions
+
+- **coq_locate_notation**
+  - Find what a notation expands to
+  - Input: `term` (string) — notation fragment to locate
+  - Returns: resolved notation
+
+#### Neovim Buffer Operations
+
 - **vim_buffer**
   - Get buffer contents with line numbers (supports filename parameter)
-  - Input `filename` (string, optional) - Get specific buffer by filename
-  - Returns numbered lines with buffer content
-- **vim_command**
-  - Send a command to VIM for navigation, spot editing, and line deletion
-  - Input `command` (string)
-  - Runs vim commands with `nvim.replaceTermcodes`. Multiple commands work with newlines
-  - Shell commands supported with `!` prefix when `ALLOW_SHELL_COMMANDS=true`
-  - On error, `'nvim:errmsg'` contents are returned 
+  - Input: `filename` (string, optional) — get specific buffer by filename
+  - Returns: numbered lines with buffer content
+
+- **get_contents**
+  - Read a range of lines from the buffer
+  - Input: `start` (number, optional) — line to start from (defaults to cursor); `length` (number) — number of lines
+  - Returns: numbered lines
+
+- **vim_insert**
+  - Insert lines at a position
+  - Input: `startLine` (number) — line to insert at (1-indexed); `lines` (string) — text to insert
+  - Returns: success/error message
+
+- **vim_delete**
+  - Delete lines from the buffer
+  - Input: `startLine` (number) — starting line (1-indexed); `num` (number) — number of lines to delete
+  - Returns: success/error message
+
+- **vim_search**
+  - Search buffer with regex
+  - Input: `pattern` (string) — regex search pattern; `ignoreCase` (boolean, optional); `wholeWord` (boolean, optional)
+  - Returns: search results
+
+- **vim_search_replace**
+  - Find and replace in buffer
+  - Input: `pattern` (string) — search pattern; `replacement` (string); `global` (boolean, optional); `ignoreCase` (boolean, optional); `confirm` (boolean, optional)
+  - Returns: replacement results
+
+#### Neovim State
+
+- **get_cursor_position**
+  - Get current cursor position
+  - Input: none
+  - Returns: cursor position
+
 - **vim_status**
   - Get comprehensive Neovim status
-  - Returns cursor position, mode, filename, visual selection with enhanced detection, window layout, current tab, marks, registers, working directory, LSP client info, and plugin detection
-  - Enhanced visual selection reporting: detects visual mode type (character/line/block), provides accurate selection text, start/end positions, and last visual selection marks
-- **vim_edit**
-  - Edit lines using insert, replace, or replaceAll modes
-  - Input `startLine` (number), `mode` (`"insert"` | `"replace"` | `"replaceAll"`), `lines` (string)
-  - insert: insert lines at startLine
-  - replace: replace lines starting at startLine
-  - replaceAll: replace entire buffer contents
-- **vim_window**
-  - Manipulate Neovim windows (split, vsplit, close, navigate)
-  - Input `command` (string: "split", "vsplit", "only", "close", "wincmd h/j/k/l")
-- **vim_mark**
-  - Set named marks at specific positions
-  - Input `mark` (string: a-z), `line` (number), `column` (number)
-- **vim_register**
-  - Set content of registers
-  - Input `register` (string: a-z or "), `content` (string)
-- **vim_visual**
-  - Create visual mode selections
-  - Input `startLine` (number), `startColumn` (number), `endLine` (number), `endColumn` (number)
+  - Input: none
+  - Returns: mode, cursor position, marks, registers (JSON)
 
-#### Enhanced Buffer Management
-- **vim_buffer_switch**
-  - Switch between buffers by name or number
-  - Input `identifier` (string | number) - Buffer name or number
-- **vim_buffer_save**
-  - Save current buffer or save to specific filename
-  - Input `filename` (string, optional) - Save to specific file
-- **vim_file_open**
-  - Open files into new buffers
-  - Input `filename` (string) - File to open
-
-#### Search and Replace
-- **vim_search**
-  - Search within current buffer with regex support
-  - Input `pattern` (string), `ignoreCase` (boolean, optional), `wholeWord` (boolean, optional)
-- **vim_search_replace**
-  - Find and replace with advanced options
-  - Input `pattern` (string), `replacement` (string), `global` (boolean, optional), `ignoreCase` (boolean, optional), `confirm` (boolean, optional)
-- **vim_grep**
-  - Project-wide search using vimgrep with quickfix list
-  - Input `pattern` (string), `filePattern` (string, optional) - File pattern to search
-
-#### Advanced Workflow Tools
-- **vim_macro**
-  - Record, stop, and play Vim macros
-  - Input `action` ("record" | "stop" | "play"), `register` (string, a-z), `count` (number, optional)
-- **vim_tab**
-  - Complete tab management
-  - Input `action` ("new" | "close" | "next" | "prev" | "first" | "last" | "list"), `filename` (string, optional)
-- **vim_fold**
-  - Code folding operations
-  - Input `action` ("create" | "open" | "close" | "toggle" | "openall" | "closeall" | "delete"), `startLine`/`endLine` (numbers, for create)
-- **vim_jump**
-  - Jump list navigation
-  - Input `direction` ("back" | "forward" | "list")
-
-#### System Tools
 - **vim_health**
-  - Check Neovim connection health and socket status
-
-Using this comprehensive set of **19 tools**, Claude can peer into your neovim session, navigate buffers, perform searches, make edits, record macros, manage tabs and folds, and handle your complete development workflow with standard Neovim features.
+  - Verify Neovim connection
+  - Input: none
+  - Returns: connection status message
 
 ### Prompts
 
-- **neovim_workflow**: Get contextual help and guidance for common Neovim workflows including editing, navigation, search, buffer management, window operations, and macro usage. Provides step-by-step instructions for accomplishing tasks with the available MCP tools.
-
-## Error Handling
-
-The server implements comprehensive error handling with custom error classes and consistent error responses:
-
-- **NeovimConnectionError**: Socket connection failures with detailed messages
-- **NeovimCommandError**: Command execution failures with command context  
-- **NeovimValidationError**: Input validation failures
-
-**New in v0.5.2**: All tools now include robust try-catch error handling that returns meaningful error messages in proper MCP format. Features include connection health monitoring, graceful error propagation, and actionable error messages to help diagnose issues.
-
-## Limitations
-
-- May not interact well with complex neovim configurations or plugins
-- Shell command execution is disabled by default for security
-- Socket connection required - won't work with standard vim
+- **coqtail_workflow**: Get contextual help and guidance for common Coqtail workflows including planning and proving.
 
 ## Configuration
 
 ### Environment Variables
 
-- `ALLOW_SHELL_COMMANDS`: Set to 'true' to enable shell command execution (e.g. `!ls`). Defaults to false for security.
 - `NVIM_SOCKET_PATH`: Set to the path of your Neovim socket. Defaults to '/tmp/nvim' if not specified.
 
 ## Installation
+### Manual Installation
+For now, you need a fork of Coqtail installed in neovim that exposes more information about the proof  state in vim: https://github.com/lgaeher/Coqtail/tree/lennard/coqtail-mcp
 
-### Option 1: DXT Package (Recommended)
-1. Download the latest `.dxt` file from [Releases](https://github.com/bigcodegen/mcp-neovim-server/releases)
-2. Drag the file to Claude Desktop
+Then, Clone this repository and run `bun run build` in your checkout.
 
-### Option 2: Manual Installation
-Add this to your `claude_desktop_config.json`:
+Now, add this to your `opencode.json`/`claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "MCP Neovim Server": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-neovim-server"
+    "coqtail-mcp": {
+      "type": "local",
+      "command": [
+        "bun",
+        "run",
+        "/path-to-your-checkout/build/index.js"
       ],
-      "env": {
-        "ALLOW_SHELL_COMMANDS": "true",
-        "NVIM_SOCKET_PATH": "/tmp/nvim"
+
+      "environment": {
+        "NVIM_SOCKET_PATH": "/tmp/nvim.sock"
       }
     }
   }
 }
 ```
+
+Finally, you'll have to start your nvim instance with `nvim --listen /tmp/nvim.sock` and afterwards launch your Opencode/Claude Code instance.
 
 ## License
 
