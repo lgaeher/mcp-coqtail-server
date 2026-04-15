@@ -337,7 +337,6 @@ server.tool(
 );
 
 // New enhanced buffer management tools
-/*
 server.tool(
   "vim_buffer_switch",
   "Switch between buffers by name or number",
@@ -345,7 +344,6 @@ server.tool(
     identifier: z.union([z.string(), z.number()]).describe("Buffer identifier - can be buffer number or filename/path")
   },
   async ({ identifier }) => {
-    try {
       const result = await neovimManager.switchBuffer(identifier);
       return {
         content: [{
@@ -353,19 +351,9 @@ server.tool(
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error switching buffer'
-        }]
-      };
-    }
   }
 );
-*/
 
-/*
 server.tool(
   "vim_buffer_save",
   "Save current buffer or save to specific filename",
@@ -373,7 +361,9 @@ server.tool(
     filename: z.string().optional().describe("Optional filename to save buffer to (defaults to current buffer's filename)")
   },
   async ({ filename }) => {
-    try {
+      if (process.env.ALLOW_FS_OPS !== 'true') {
+        throw new Error(`File system operations are disabled. Set ALLOW_FS_OPS=true environment variable to enable file system operations.`);
+      }
       const result = await neovimManager.saveBuffer(filename);
       return {
         content: [{
@@ -381,19 +371,9 @@ server.tool(
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error saving buffer'
-        }]
-      };
-    }
   }
 );
-*/
 
-/*
 server.tool(
   "vim_file_open",
   "Open files into new buffers",
@@ -401,7 +381,9 @@ server.tool(
     filename: z.string().describe("Path to the file to open")
   },
   async ({ filename }) => {
-    try {
+      if (process.env.ALLOW_FS_OPS !== 'true') {
+        throw new Error(`File system operations are disabled. Set ALLOW_FS_OPS=true environment variable to enable file system operations.`);
+      }
       const result = await neovimManager.openFile(filename);
       return {
         content: [{
@@ -409,17 +391,8 @@ server.tool(
           text: result
         }]
       };
-    } catch (error) {
-      return {
-        content: [{
-          type: "text",
-          text: error instanceof Error ? error.message : 'Error opening file'
-        }]
-      };
-    }
   }
 );
-*/
 
 // New search and replace tools
 server.tool(

@@ -9,6 +9,7 @@ This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mc
 
 - Connects to your nvim instance if you expose a socket file, for example `--listen /tmp/nvim.sock`, when starting nvim
 - Views your current buffer and proof state
+- Optionally (if permitted), open new buffers and save buffers
 - Allows to `Search`/`Check`/`Print`/`Locate` to plan proofs.
 - Allows to delete/insert into your file to realize proofs
 - Allows to step Rocq's proof state and get feedback on errors.
@@ -93,6 +94,21 @@ This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mc
   - Input: `startLine` (number) — starting line (1-indexed); `num` (number) — number of lines to delete
   - Returns: success/error message
 
+- **vim_buffer_save**
+  - Save the current buffer or write to a specific filename
+  - Input: `filename` (string, optional) — save to this filename instead of the current buffer path
+  - Returns: success/error message
+
+- **vim_buffer_switch**
+  - Switch to another open buffer by number or filename
+  - Input: `identifier` (string | number) — target buffer number or filename/path
+  - Returns: switched buffer metadata
+
+- **vim_file_open**
+  - Open a file into a new buffer
+  - Input: `filename` (string) — path to the file to open
+  - Returns: opened buffer metadata
+
 - **vim_search**
   - Search buffer with regex
   - Input: `pattern` (string) — regex search pattern; `ignoreCase` (boolean, optional); `wholeWord` (boolean, optional)
@@ -129,6 +145,7 @@ This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mc
 ### Environment Variables
 
 - `NVIM_SOCKET_PATH`: Set to the path of your Neovim socket. Defaults to '/tmp/nvim' if not specified.
+- `ALLOW_FS_OPS`: Set to `true` to allow filesystem operations such as opening files and saving buffers. Defaults to `false`.
 
 ## Installation
 ### Manual Installation
