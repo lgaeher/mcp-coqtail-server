@@ -16,8 +16,9 @@ export class NeovimCommandError extends Error {
 }
 
 export class CoqtailError extends Error {
-  constructor(err: string) {
-    super(err);
+  constructor(pos: string, msg: String, goal: String) {
+    const vimerr = `At position ${pos}: ${msg}\n\nCurrent Goal: ${goal}`;
+    super(vimerr);
     this.name = 'CoqtailError';
   }
 }
@@ -168,30 +169,33 @@ export class NeovimManager {
     return [goal_num, info_num];
   }
 
-  public async getGoalBuffer(): Promise<string> {
+  public async getGoalBuffer(nvim: Neovim): Promise<string[]> {
+    const buffer_info = await this.getCoqBufferInfo(nvim);
+
+    // Find buffer by id
+    const buffers = await nvim.buffers;
+    let targetBuffer = null;
+
+    for (const buf of buffers) {
+      if (buf.id == buffer_info[0]) {
+        targetBuffer = buf;
+        break;
+      }
+    }
+
+    if (!targetBuffer) {
+      throw new NeovimValidationError(`Goal buffer not found`);
+    }
+
+    const lines = await targetBuffer.lines;
+    return lines;
+  }
+
+  public async getGoalBufferReq(): Promise<string> {
     try {
       const nvim = await this.connect();
-
-      const buffer_info = await this.getCoqBufferInfo(nvim);
-
-      // Find buffer by id
-      const buffers = await nvim.buffers;
-      let targetBuffer = null;
-
-      for (const buf of buffers) {
-        if (buf.id == buffer_info[0]) {
-          targetBuffer = buf;
-          break;
-        }
-      }
-
-      if (!targetBuffer) {
-        throw new NeovimValidationError(`Goal buffer not found`);
-      }
-
-      const lines = await targetBuffer.lines;
-
-      return lines.join("\n");
+      let goal = await this.getGoalBuffer(nvim);
+      return goal.join("\n");
     } catch (error) {
       if (error instanceof NeovimValidationError) {
         throw error;
@@ -201,36 +205,26 @@ export class NeovimManager {
     }
   }
 
-  public async getInfoBuffer(): Promise<string> {
-    try {
-      const nvim = await this.connect();
+  public async getInfoBuffer(nvim: Neovim): Promise<string> {
+    const buffer_info = await this.getCoqBufferInfo(nvim);
 
-      const buffer_info = await this.getCoqBufferInfo(nvim);
+    // Find buffer by id
+    const buffers = await nvim.buffers;
+    let targetBuffer = null;
 
-      // Find buffer by id
-      const buffers = await nvim.buffers;
-      let targetBuffer = null;
-
-      for (const buf of buffers) {
-        if (buf.id == buffer_info[1]) {
-          targetBuffer = buf;
-          break;
-        }
+    for (const buf of buffers) {
+      if (buf.id == buffer_info[1]) {
+        targetBuffer = buf;
+        break;
       }
-
-      if (!targetBuffer) {
-        throw new NeovimValidationError(`Info buffer not found`);
-      }
-
-      const lines = await targetBuffer.lines;
-      return lines.join('\n');
-    } catch (error) {
-      if (error instanceof NeovimValidationError) {
-        throw error;
-      }
-      console.error('Error getting buffer contents:', error);
-      return "";
     }
+
+    if (!targetBuffer) {
+      throw new NeovimValidationError(`Info buffer not found`);
+    }
+
+    const lines = await targetBuffer.lines;
+    return lines.join('\n');
   }
 
   async sleep(ms: number): Promise<void> {
@@ -245,6 +239,29 @@ export class NeovimManager {
       await this.sleep(100);
       coqtail_pending =  await buffer.getVar("coqtail_cmds_pending");
     }
+  }
+
+  async getCurrentGoal(nvim: Neovim): Promise<String> {
+    let goal = await this.getGoalBuffer(nvim);
+
+    const separator = "=========================";
+
+    // find first separator
+    const startIndex = goal.findIndex(line => line.startsWith(separator));
+    if (startIndex === -1) {
+      return "No goal";
+    }
+
+    const result: string[] = [];
+
+    for (let i = startIndex + 1; i < goal.length && result.length < 50; i++) {
+      if (goal[i].startsWith(separator)) {
+        break;
+      }
+      result.push(goal[i]);
+    }
+
+    return result.join("\n");
   }
 
   async handle_coqtail_error(nvim: Neovim, command: string) {
@@ -262,9 +279,13 @@ export class NeovimManager {
       if (coqtail_err_pos) {
         let pos = coqtail_err_pos.toString();
         let msg = coqtail_err_msg.toString();
-        const vimerr = `At position ${pos}: ${msg}`;
-        console.error('Vim error:', vimerr);
-        throw new CoqtailError(String(vimerr));
+
+        let goal = await this.getCurrentGoal(nvim);
+
+
+        let err = new CoqtailError(pos, msg, goal);
+        console.error(String(err));
+        throw err;
       }
   }
 
@@ -294,7 +315,7 @@ export class NeovimManager {
       await this.handle_coqtail_error(nvim, command);
 
 
-      const response = await this.getInfoBuffer();
+      const response = await this.getInfoBuffer(nvim);
 
       // Return the actual command output if any
       return response ? String(response).trim() : 'Command executed (no output)';
@@ -304,6 +325,43 @@ export class NeovimManager {
       }
       console.error('Error sending command:', error);
       throw new NeovimCommandError("CoqNext", error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+
+  public async sendCoqToLine(num: number): Promise<string> {
+    try {
+      const nvim = await this.connect();
+
+      // For regular Vim commands
+      await nvim.setVvar('errmsg', '');
+
+      var command = `CoqToLine ${num}`;
+
+      // Execute the command and capture its output using the execute() function
+      const output = await nvim.call('execute', [command]);
+
+      // Check for errors
+      const vimerr = await nvim.getVvar('errmsg');
+      if (vimerr) {
+        console.error('Vim error:', vimerr);
+        throw new NeovimCommandError(command, String(vimerr));
+      }
+
+      await this.handle_coqtail_error(nvim, command);
+
+
+      let response = await this.getInfoBuffer(nvim);
+      response = response.trim();
+
+      const currentPos = await this.getCoqPosition(nvim);
+      response = `response\n\nCurrent position: ${currentPos}`;
+      return response;
+    } catch (error) {
+      if (error instanceof NeovimCommandError || error instanceof CoqtailError || error instanceof NeovimValidationError) {
+        throw error;
+      }
+      console.error('Error sending command:', error);
+      throw new NeovimCommandError("CoqToLine", error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
@@ -327,7 +385,7 @@ export class NeovimManager {
       }
       await this.handle_coqtail_error(nvim, command);
 
-      const response = await this.getInfoBuffer();
+      const response = await this.getInfoBuffer(nvim);
 
       // Return the actual command output if any
       return response ? String(response).trim() : 'Command executed (no output)';
@@ -364,7 +422,7 @@ export class NeovimManager {
       }
       await this.handle_coqtail_error(nvim, command);
 
-      const response = await this.getInfoBuffer();
+      const response = await this.getInfoBuffer(nvim);
 
       // Return the actual command output if any
       return 'Command executed (no output)';
@@ -401,7 +459,7 @@ export class NeovimManager {
       }
       await this.handle_coqtail_error(nvim, command);
 
-      const response = await this.getInfoBuffer();
+      const response = await this.getInfoBuffer(nvim);
 
       // Return the actual command output if any
       return response ? String(response).trim() : 'Command executed (no output)';
@@ -438,7 +496,7 @@ export class NeovimManager {
       }
       await this.handle_coqtail_error(nvim, command);
 
-      const response = await this.getInfoBuffer();
+      const response = await this.getInfoBuffer(nvim);
 
       // Return the actual command output if any
       return response ? String(response).trim() : 'Command executed (no output)';
@@ -475,7 +533,7 @@ export class NeovimManager {
       }
       await this.handle_coqtail_error(nvim, command);
 
-      let response = await this.getInfoBuffer();
+      let response = await this.getInfoBuffer(nvim);
 
       response = String(response).trim();
 
@@ -519,7 +577,7 @@ export class NeovimManager {
       }
       await this.handle_coqtail_error(nvim, command);
 
-      const response = await this.getInfoBuffer();
+      const response = await this.getInfoBuffer(nvim);
 
       // Return the actual command output if any
       return response ? String(response).trim() : 'Command executed (no output)';
@@ -549,15 +607,19 @@ export class NeovimManager {
     }
   }
 
-  public async getCoqPosition(): Promise<string> {
+  public async getCoqPosition(nvim: Neovim): Promise<string> {
+    const buffer = await nvim.buffer;
+
+    const coqtail_position = await buffer.getVar("coqtail_position");
+
+    // Return the actual command output if any
+    return coqtail_position.toString();
+  }
+
+  public async sendGetCoqPosition(): Promise<string> {
     try {
       const nvim = await this.connect();
-      const buffer = await nvim.buffer;
-
-      const coqtail_position = await buffer.getVar("coqtail_position");
-
-      // Return the actual command output if any
-      return coqtail_position.toString();
+      return this.getCoqPosition(nvim);
     } catch (error) {
       if (error instanceof NeovimCommandError || error instanceof NeovimValidationError) {
         throw error;
@@ -618,6 +680,27 @@ export class NeovimManager {
       }
       console.error('Error sending command:', error);
       throw new NeovimCommandError("p", error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+
+  public async insertLines(startLine: number, newText: string, checkCoq: boolean): Promise<string> {
+    try {
+      const nvim = await this.connect();
+      const splitByLines = newText.split('\n');
+      const buffer = await nvim.buffer;
+
+      await buffer.insert(splitByLines, startLine - 1);
+
+      if (checkCoq) {
+        const lineCount = splitByLines.length;
+        return this.sendCoqToLine(startLine + lineCount);
+      } else {
+        return 'Lines inserted successfully';
+      }
+
+    } catch (error) {
+      console.error('Error editing lines:', error);
+      return 'Error editing lines';
     }
   }
 

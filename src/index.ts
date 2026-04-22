@@ -101,7 +101,7 @@ server.tool(
   "Get the current Coq goal",
   {  },
   async ({ }) => {
-      const bufferContents = await neovimManager.getGoalBuffer();
+      const bufferContents = await neovimManager.getGoalBufferReq();
       return {
         content: [{
           type: "text",
@@ -111,12 +111,27 @@ server.tool(
   }
 );
 
+//server.tool(
+  //"coq_to_cursor",
+  //"Move Coq scripting to the current cursor position",
+  //{ },
+  //async ({ }) => {
+      //const result = await neovimManager.sendCoqToCursor();
+      //return {
+        //content: [{
+          //type: "text",
+          //text: result
+        //}]
+      //};
+  //}
+//);
+
 server.tool(
-  "coq_to_cursor",
-  "Move Coq scripting to the current cursor position",
-  { },
-  async ({ }) => {
-      const result = await neovimManager.sendCoqToCursor();
+  "coq_to_line",
+  "Check file with Coq up to the given line",
+  { line: z.number().describe("The line number to advance to") },
+  async ({ line }) => {
+      const result = await neovimManager.sendCoqToLine(line);
       return {
         content: [{
           type: "text",
@@ -126,35 +141,35 @@ server.tool(
   }
 );
 
-server.tool(
-  "coq_next",
-  "Advance Coq scripting by a number of steps",
-  { num: z.number().describe("The number of steps to advance") },
-  async ({ num }) => {
-      const result = await neovimManager.sendCoqNext(num);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-  }
-);
+//server.tool(
+  //"coq_next",
+  //"Advance Coq scripting by a number of steps",
+  //{ num: z.number().describe("The number of steps to advance") },
+  //async ({ num }) => {
+      //const result = await neovimManager.sendCoqNext(num);
+      //return {
+        //content: [{
+          //type: "text",
+          //text: result
+        //}]
+      //};
+  //}
+//);
 
-server.tool(
-  "coq_revert",
-  "Revert Coq scripting by a number of steps",
-  { num: z.number().describe("The number of steps to revert") },
-  async ({ num }) => {
-    const result = await neovimManager.sendCoqRevert(num);
-    return {
-      content: [{
-        type: "text",
-        text: result
-      }]
-    };
-  }
-);
+//server.tool(
+  //"coq_revert",
+  //"Revert Coq scripting by a number of steps",
+  //{ num: z.number().describe("The number of steps to revert") },
+  //async ({ num }) => {
+    //const result = await neovimManager.sendCoqRevert(num);
+    //return {
+      //content: [{
+        //type: "text",
+        //text: result
+      //}]
+    //};
+  //}
+//);
 
 server.tool(
   "coq_check",
@@ -233,28 +248,28 @@ server.tool(
   }
 );
 
-server.tool(
-  "get_cursor_position",
-  "Get the current cursor position.",
-  { },
-  async ({ }) => {
-      const result = await neovimManager.getCursorPosition();
-      let res = `${result}`;
-      return {
-        content: [{
-          type: "text",
-          text: res
-        }]
-      };
-  }
-);
+//server.tool(
+  //"get_cursor_position",
+  //"Get the current cursor position.",
+  //{ },
+  //async ({ }) => {
+      //const result = await neovimManager.getCursorPosition();
+      //let res = `${result}`;
+      //return {
+        //content: [{
+          //type: "text",
+          //text: res
+        //}]
+      //};
+  //}
+//);
 
 server.tool(
   "coq_get_position",
   "Get the position up to which Coq has checked the proof.",
   { },
   async ({ }) => {
-      const result = await neovimManager.getCoqPosition();
+      const result = await neovimManager.sendGetCoqPosition();
       let res = `${result}`;
       return {
         content: [{
@@ -265,30 +280,34 @@ server.tool(
   }
 );
 
-server.tool(
-  "vim_status",
-  "Get comprehensive Neovim status including cursor position, mode, marks, and registers",
-  {},
-  async () => {
-      const status = await neovimManager.getNeovimStatus();
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(status, null, 2)
-        }]
-      };
-  }
-);
+//server.tool(
+  //"vim_status",
+  //"Get comprehensive Neovim status including cursor position, mode, marks, and registers",
+  //{},
+  //async () => {
+      //const status = await neovimManager.getNeovimStatus();
+      //return {
+        //content: [{
+          //type: "text",
+          //text: JSON.stringify(status, null, 2)
+        //}]
+      //};
+  //}
+//);
 
 server.tool(
   "vim_insert",
-  "Insert the given text as new lines starting at the given line number.",
+  "Insert the given text as new lines starting at the given line number and save buffer.",
   {
     startLine: z.number().describe("The line number where editing should begin (1-indexed)"),
-    lines: z.string().describe("The text content to insert as new lines (don't terminate with newline)")
+    lines: z.string().describe("The text content to insert as new lines (don't terminate with newline)"),
+    checkCoq: z.boolean().optional().describe("Whether to check the inserted text with Coq (default: true)")
   },
-  async ({ startLine, lines }) => {
-      const result = await neovimManager.editLines(startLine, 'insert', lines);
+  async ({ startLine, lines, checkCoq = true }) => {
+      const result = await neovimManager.insertLines(startLine, lines, checkCoq);
+      if (process.env.ALLOW_FS_OPS == 'true') {
+        await neovimManager.saveBuffer(undefined);
+      }
       return {
         content: [{
           type: "text",
@@ -307,6 +326,9 @@ server.tool(
   },
   async ({ startLine, num }) => {
       const result = await neovimManager.removeLines(startLine, num);
+      if (process.env.ALLOW_FS_OPS == 'true') {
+        await neovimManager.saveBuffer(undefined);
+      }
       return {
         content: [{
           type: "text",
@@ -316,25 +338,25 @@ server.tool(
   }
 );
 
-server.tool(
-  "vim_visual",
-  "Create visual mode selections in the buffer",
-  {
-    startLine: z.number().describe("The starting line number for visual selection (1-indexed)"),
-    startColumn: z.number().describe("The starting column number for visual selection (0-indexed)"),
-    endLine: z.number().describe("The ending line number for visual selection (1-indexed)"),
-    endColumn: z.number().describe("The ending column number for visual selection (0-indexed)")
-  },
-  async ({ startLine, startColumn, endLine, endColumn }) => {
-      const result = await neovimManager.visualSelect(startLine, startColumn, endLine, endColumn);
-      return {
-        content: [{
-          type: "text",
-          text: result
-        }]
-      };
-  }
-);
+//server.tool(
+  //"vim_visual",
+  //"Create visual mode selections in the buffer",
+  //{
+    //startLine: z.number().describe("The starting line number for visual selection (1-indexed)"),
+    //startColumn: z.number().describe("The starting column number for visual selection (0-indexed)"),
+    //endLine: z.number().describe("The ending line number for visual selection (1-indexed)"),
+    //endColumn: z.number().describe("The ending column number for visual selection (0-indexed)")
+  //},
+  //async ({ startLine, startColumn, endLine, endColumn }) => {
+      //const result = await neovimManager.visualSelect(startLine, startColumn, endLine, endColumn);
+      //return {
+        //content: [{
+          //type: "text",
+          //text: result
+        //}]
+      //};
+  //}
+//);
 
 // New enhanced buffer management tools
 server.tool(
@@ -416,16 +438,17 @@ server.tool(
 
 server.tool(
   "vim_search_replace",
-  "Find and replace with global, case-insensitive, and confirm options",
+  "Find and replace with case-insensitive option",
   {
     pattern: z.string().describe("Search pattern (supports regex)"),
     replacement: z.string().describe("Replacement text"),
-    global: z.boolean().optional().describe("Replace all occurrences in each line (default: false)"),
     ignoreCase: z.boolean().optional().describe("Whether to ignore case in search (default: false)"),
-    confirm: z.boolean().optional().describe("Whether to confirm each replacement (default: false)")
   },
-  async ({ pattern, replacement, global = false, ignoreCase = false, confirm = false }) => {
-      const result = await neovimManager.searchAndReplace(pattern, replacement, { global, ignoreCase, confirm });
+  async ({ pattern, replacement, ignoreCase = false }) => {
+      const result = await neovimManager.searchAndReplace(pattern, replacement, { global: true, ignoreCase, confirm: false });
+      if (process.env.ALLOW_FS_OPS == 'true') {
+        await neovimManager.saveBuffer(undefined);
+      }
       return {
         content: [{
           type: "text",
@@ -463,20 +486,20 @@ server.tool(
 //);
 
 // Health check tool
-server.tool(
-  "vim_health",
-  "Check Neovim connection health",
-  {},
-  async () => {
-    const isHealthy = await neovimManager.healthCheck();
-    return {
-      content: [{
-        type: "text",
-        text: isHealthy ? "Neovim connection is healthy" : "Neovim connection failed"
-      }]
-    };
-  }
-);
+//server.tool(
+  //"vim_health",
+  //"Check Neovim connection health",
+  //{},
+  //async () => {
+    //const isHealthy = await neovimManager.healthCheck();
+    //return {
+      //content: [{
+        //type: "text",
+        //text: isHealthy ? "Neovim connection is healthy" : "Neovim connection failed"
+      //}]
+    //};
+  //}
+//);
 
 // Register a sample prompt for Coqtail assistance
 server.prompt(

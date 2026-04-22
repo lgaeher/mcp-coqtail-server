@@ -25,20 +25,10 @@ This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mc
 
 #### Rocq Proof Management
 
-- **coq_next**
-  - Advance Rocq by n steps
-  - Input: `num` (number) — number of steps to advance
-  - Returns: success/error message
-
-- **coq_revert**
-  - Undo the last n Rocq steps
-  - Input: `num` (number) — number of steps to revert
-  - Returns: success/error message
-
-- **coq_to_cursor**
-  - Run Rocq up to the cursor position
-  - Input: none
-  - Returns: success/error message
+- **coq_to_line**
+  - Run Rocq checking up to a specific line (`CoqToLine`)
+  - Input: `line` (number) — line number to advance checking to
+  - Returns: command feedback and current checked position
 
 - **coq_get_position**
   - Get the line Rocq has checked up to
@@ -74,6 +64,8 @@ This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mc
 
 #### Neovim Buffer Operations
 
+When `ALLOW_FS_OPS=true`, mutating tools (`vim_insert`, `vim_delete`, `vim_search_replace`) also save the current buffer automatically.
+
 - **vim_buffer**
   - Get buffer contents with line numbers (supports filename parameter)
   - Input: `filename` (string, optional) — get specific buffer by filename
@@ -85,9 +77,9 @@ This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mc
   - Returns: numbered lines
 
 - **vim_insert**
-  - Insert lines at a position
-  - Input: `startLine` (number) — line to insert at (1-indexed); `lines` (string) — text to insert
-  - Returns: success/error message
+  - Insert lines at a position and optionally check with Rocq
+  - Input: `startLine` (number) — line to insert at (1-indexed); `lines` (string) — text to insert; `checkCoq` (boolean, optional, default: `true`)
+  - Returns: success/error message (or Rocq feedback when `checkCoq=true`)
 
 - **vim_delete**
   - Delete lines from the buffer
@@ -115,26 +107,9 @@ This server is based on the [mcp-neovim-server](https://github.com/bigcodegen/mc
   - Returns: search results
 
 - **vim_search_replace**
-  - Find and replace in buffer
-  - Input: `pattern` (string) — search pattern; `replacement` (string); `global` (boolean, optional); `ignoreCase` (boolean, optional); `confirm` (boolean, optional)
+  - Find and replace in buffer (always replaces all matches)
+  - Input: `pattern` (string) — search pattern; `replacement` (string); `ignoreCase` (boolean, optional)
   - Returns: replacement results
-
-#### Neovim State
-
-- **get_cursor_position**
-  - Get current cursor position
-  - Input: none
-  - Returns: cursor position
-
-- **vim_status**
-  - Get comprehensive Neovim status
-  - Input: none
-  - Returns: mode, cursor position, marks, registers (JSON)
-
-- **vim_health**
-  - Verify Neovim connection
-  - Input: none
-  - Returns: connection status message
 
 ### Prompts
 
